@@ -63,6 +63,32 @@ static int log_attempt(struct connection *c) {
     return r;
 }
 
+static int log_public_key_attempt(struct connection *c) {
+    FILE *f;
+    int r;
+
+    if ((f = fopen(LOGFILE, "a+")) == NULL) {
+        fprintf(stderr, "Unable to open %s\n", LOGFILE);
+        return -1;
+    }
+
+    if (get_utc(c) <= 0) {
+        fprintf(stderr, "Error getting time\n");
+        return -1;
+    }
+
+    if (get_client_ip(c) < 0) {
+        fprintf(stderr, "Error getting client ip\n");
+        return -1;
+    }
+
+    c->user = ssh_message_auth_user(c->message);
+
+    if (DEBUG) { printf("%s %s %s PUBKEY\n", c->con_time, c->client_ip, c->user); }
+    r = fprintf(f, "%s\t%s\t%s\tPUBKEY\t\n", c->con_time, c->client_ip, c->user);
+    fclose(f);
+    return r;
+}
 
 /* Logs password auth attempts. Always replies with SSH_MESSAGE_USERAUTH_FAILURE. */
 int handle_auth(ssh_session session) {
@@ -86,6 +112,9 @@ int handle_auth(ssh_session session) {
         /* Log the authentication request and disconnect. */
         if (ssh_message_subtype(con.message) == SSH_AUTH_METHOD_PASSWORD) {
                 log_attempt(&con);
+        }
+        else if (ssh_message_subtype(con.message) == SSH_AUTH_METHOD_PUBLICKEY) {
+            log_public_key_attempt(&con);
         }
         else {
             if (DEBUG) { fprintf(stderr, "Not a password authentication attempt.\n"); }
